@@ -1,5 +1,6 @@
-torch==2.0.0
-torchaudio==2.0.1
+torch==2.3.0
+torchvision==0.18.0
+torchaudio==2.3.0
 faster-whisper==1.0.0
 transformers
 pandas
