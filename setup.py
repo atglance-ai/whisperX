@@ -15,7 +15,7 @@ setup(
     url="https://github.com/m-bain/whisperx",
     license="MIT",
     packages=find_packages(exclude=["tests*"]),
-    install_requires=["pyannote.audio==3.1.1", "faster-whisper==1.0.1"],
+    install_requires=["faster-whisper==1.0.1"],
     entry_points={
         "console_scripts": ["whisperx=whisperx.transcribe:cli"],
     },
