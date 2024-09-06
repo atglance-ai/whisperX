@@ -6,3 +6,4 @@ transformers==4.39.3
 pandas==2.2.2
 setuptools==72.1.0
 nltk==3.8.1
+pyannote.audio==3.3.1
