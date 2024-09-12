@@ -66,7 +66,7 @@ DEFAULT_ALIGN_MODELS_HF = {
 ALIGN_MODELS = {
     "en": "ml/model/wav2vec2/en/jonatasgrosman/wav2vec2-large-xlsr-53-english",
     "fi": "ml/model/wav2vec2/fi/jonatasgrosman/wav2vec2-large-xlsr-53-finnish",
-    "sv": "ml/model/wav2vec2/sv/KBLab/wav2vec2-large-xlsr-53-swedish",
+    "sv": "ml/model/wav2vec2/sv/KBLab/wav2vec2-large-voxrex-swedish",
 }
 
 
