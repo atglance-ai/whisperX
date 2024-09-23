@@ -54,6 +54,7 @@ class WhisperModel(faster_whisper.WhisperModel):
                 encoder_output,
                 [prompt] * batch_size,
                 beam_size=options.beam_size,
+                return_scores=True,
                 patience=options.patience,
                 length_penalty=options.length_penalty,
                 max_length=self.max_length,
