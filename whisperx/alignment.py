@@ -65,18 +65,20 @@ DEFAULT_ALIGN_MODELS_HF = {
 
 ALIGN_MODELS = {
     "en": "ml/model/wav2vec2/en/jonatasgrosman/wav2vec2-large-xlsr-53-english",
-    "fi": "ml/model/wav2vec2/fi/jonatasgrosman/wav2vec2-large-xlsr-53-finnish",
+    # "fi": "ml/model/wav2vec2/fi/jonatasgrosman/wav2vec2-large-xlsr-53-finnish",
     "sv": "ml/model/wav2vec2/sv/KBLab/wav2vec2-large-voxrex-swedish",
 }
 
 
-def load_align_model(language_code, device):
-    if language_code not in ALIGN_MODELS:
-        raise ValueError(
-            f"No align-model for language: {language_code}, available models: {ALIGN_MODELS.items()}"
-        )
+def load_align_model(language_code, device, model_name=None):
 
-    model_name = ALIGN_MODELS[language_code]
+    if model_name is None:
+        if language_code not in ALIGN_MODELS:
+            raise ValueError(
+                f"No align-model for language: {language_code}, available models: {ALIGN_MODELS.items()}"
+            )
+
+        model_name = ALIGN_MODELS[language_code]
 
     try:
         processor = Wav2Vec2Processor.from_pretrained(model_name)
