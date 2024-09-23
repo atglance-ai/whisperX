@@ -70,13 +70,15 @@ ALIGN_MODELS = {
 }
 
 
-def load_align_model(language_code, device):
-    if language_code not in ALIGN_MODELS:
-        raise ValueError(
-            f"No align-model for language: {language_code}, available models: {ALIGN_MODELS.items()}"
-        )
+def load_align_model(language_code, device, model_name=None):
 
-    model_name = ALIGN_MODELS[language_code]
+    if model_name is not None:
+        if language_code not in ALIGN_MODELS:
+            raise ValueError(
+                f"No align-model for language: {language_code}, available models: {ALIGN_MODELS.items()}"
+            )
+
+        model_name = ALIGN_MODELS[language_code]
 
     try:
         processor = Wav2Vec2Processor.from_pretrained(model_name)
