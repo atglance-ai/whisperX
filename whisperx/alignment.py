@@ -108,6 +108,7 @@ def align(
     return_char_alignments: bool = False,
     print_progress: bool = False,
     combined_progress: bool = False,
+    split_segments_to_sentences: bool = False,
 ) -> AlignedTranscriptionResult:
     """
     Align phoneme recognition predictions to known transcription.
@@ -168,6 +169,8 @@ def align(
             if any([c in model_dictionary.keys() for c in wrd]):
                 clean_wdx.append(wdx)
 
+        # NOTE: PunktSentenceTokenizer splits up for instance C.G.'s into C.G. and 's
+        # It's not clear that we even need to split up the text into sentences for alignment
         punkt_param = PunktParameters()
         punkt_param.abbrev_types = set(PUNKT_ABBREVIATIONS)
         sentence_splitter = PunktSentenceTokenizer(punkt_param)
@@ -176,7 +179,11 @@ def align(
         segment["clean_char"] = clean_char
         segment["clean_cdx"] = clean_cdx
         segment["clean_wdx"] = clean_wdx
-        segment["sentence_spans"] = sentence_spans
+        if split_segments_to_sentences:
+            segment["sentence_spans"] = sentence_spans
+        else:
+            segment["sentence_spans"] = [(0, len(text))]
+
 
     aligned_segments: List[SingleAlignedSegment] = []
 
