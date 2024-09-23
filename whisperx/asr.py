@@ -50,7 +50,7 @@ class WhisperModel(faster_whisper.WhisperModel):
             round(options.max_initial_timestamp / self.time_precision)
         )
 
-        result = self.model.generate(
+        results = self.model.generate(
                 encoder_output,
                 [prompt] * batch_size,
                 beam_size=options.beam_size,
