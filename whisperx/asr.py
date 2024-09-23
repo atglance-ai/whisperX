@@ -161,8 +161,10 @@ class FasterWhisperPipeline(Pipeline):
         return {'inputs': features}
 
     def _forward(self, model_inputs):
-        outputs = self.model.generate_segment_batched(model_inputs['inputs'], self.tokenizer, self.options)
-        return {'text': outputs}
+        # outputs = self.model.generate_segment_batched(model_inputs['inputs'], self.tokenizer, self.options)
+        # return {'text': outputs}
+        model_outputs = self.model.generate_segment_batched(model_inputs['inputs'], self.tokenizer, self.options)
+        return model_outputs
 
     def postprocess(self, model_outputs):
         return model_outputs
