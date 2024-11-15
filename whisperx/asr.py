@@ -1,5 +1,6 @@
 import os
 import warnings
+import time
 from typing import List, Union, Optional, NamedTuple
 
 import ctranslate2
@@ -260,18 +261,25 @@ class FasterWhisperPipeline(Pipeline):
 
 
     def detect_language(self, audio: np.ndarray):
+        start_time = time.time()
         if audio.shape[0] < N_SAMPLES:
             print("Warning: audio is shorter than 30s, language detection may be inaccurate.")
-        model_n_mels = self.model.feat_kwargs.get("feature_size")
-        segment = log_mel_spectrogram(audio[: N_SAMPLES],
-                                      n_mels=model_n_mels if model_n_mels is not None else 80,
-                                      padding=0 if audio.shape[0] >= N_SAMPLES else N_SAMPLES - audio.shape[0])
-        encoder_output = self.model.encode(segment)
-        results = self.model.model.detect_language(encoder_output)
-        language_token, language_probability = results[0][0]
-        language = language_token[2:-2]
-        print(f"Detected language: {language} ({language_probability:.2f}) in first 30s of audio...")
-        return language
+        language_of_segment = []
+        num_segments = audio.shape[0] // N_SAMPLES
+
+        for i in range(num_segments):
+            segment = log_mel_spectrogram(audio[i * N_SAMPLES: (i + 1) * N_SAMPLES],
+                                          n_mels=80,
+                                          padding=0 if audio.shape[0] >= N_SAMPLES else N_SAMPLES - audio.shape[0])
+            encoder_output = self.model.encode(segment)
+            results = self.model.model.detect_language(encoder_output)
+            language_token, language_probability = results[0][0]
+            language = language_token[2:-2]
+            language_of_segment.append(language)
+        most_common_language = max(set(language_of_segment), key=language_of_segment.count)
+        num_detected = language_of_segment.count(most_common_language)
+        print(f"Using most common language: {most_common_language}, detected in {num_detected}/{num_segments} 30s segments of audio. Total Inference time {time.time() - start_time:.2f}s.")
+        return most_common_language
 
 def load_model(whisper_arch,
                device,
