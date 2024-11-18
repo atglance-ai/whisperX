@@ -265,11 +265,17 @@ class FasterWhisperPipeline(Pipeline):
         if audio.shape[0] < N_SAMPLES:
             print("Warning: audio is shorter than 30s, language detection may be inaccurate.")
         language_of_segment = []
-        num_segments = audio.shape[0] // N_SAMPLES
+        total_segments = audio.shape[0] // N_SAMPLES
+        # Determine the number of segments to check based on the given criteria
+        if total_segments < 10:
+            num_segments = total_segments
+        else:
+            # Use either the first 30 segments or the first third of the segments, whichever is smaller
+            num_segments = min(30, max(10, total_segments // 3))
+        
         model_n_mels = self.model.feat_kwargs.get("feature_size")
 
         for i in range(num_segments):
-            
             segment = log_mel_spectrogram(audio[i * N_SAMPLES: (i + 1) * N_SAMPLES],
                                           n_mels=model_n_mels if model_n_mels is not None else 80,
                                           padding=0 if audio.shape[0] >= N_SAMPLES else N_SAMPLES - audio.shape[0])
@@ -278,10 +284,28 @@ class FasterWhisperPipeline(Pipeline):
             language_token, language_probability = results[0][0]
             language = language_token[2:-2]
             language_of_segment.append(language)
+        
+        # Determine the most common language across all checked segments
         most_common_language = max(set(language_of_segment), key=language_of_segment.count)
         num_detected = language_of_segment.count(most_common_language)
-        print(f"Using most common language: {most_common_language}, detected in {num_detected}/{num_segments} 30s segments of audio. Total Inference time {time.time() - start_time:.2f}s.")
+        
+        # Determine the second and third most common languages if available
+        language_counts = {lang: language_of_segment.count(lang) for lang in set(language_of_segment)}
+        sorted_languages = sorted(language_counts.items(), key=lambda item: item[1], reverse=True)
+        
+        second_most_common_language = sorted_languages[1] if len(sorted_languages) > 1 else (None, 0)
+        third_most_common_language = sorted_languages[2] if len(sorted_languages) > 2 else (None, 0)
+        
+        # Print the results of the language detection process
+        print(f"Using most common language: {most_common_language}, detected in {num_detected}/{num_segments} segments of audio.\n"
+            f"Second most common: {second_most_common_language[0]}, detected in {second_most_common_language[1]} segments.\n"
+            f"Third most common: {third_most_common_language[0]}, detected in {third_most_common_language[1]} segments.\n"
+            f"Language of the first segment: {language_of_segment[0]} (old default)\n"
+            f"Total Inference time: {time.time() - start_time:.2f}s.")
+        
+        # Return the most common language detected
         return most_common_language
+
 
 def load_model(whisper_arch,
                device,
