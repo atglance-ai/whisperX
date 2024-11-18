@@ -297,11 +297,13 @@ class FasterWhisperPipeline(Pipeline):
         third_most_common_language = sorted_languages[2] if len(sorted_languages) > 2 else (None, 0)
         
         # Print the results of the language detection process
-        print(f"Using most common language: {most_common_language}, detected in {num_detected}/{num_segments} segments of audio.\n"
-            f"Second most common: {second_most_common_language[0]}, detected in {second_most_common_language[1]} segments.\n"
-            f"Third most common: {third_most_common_language[0]}, detected in {third_most_common_language[1]} segments.\n"
-            f"Language of the first segment: {language_of_segment[0]} (old default)\n"
-            f"Total Inference time: {time.time() - start_time:.2f}s.")
+        print(
+            f"Using most common language: {most_common_language}, detected in {num_detected}/{num_segments} segments of audio. [language detection]\n"
+            f"Second most common: {second_most_common_language[0]}, detected in {second_most_common_language[1]} segments. [language detection]\n"
+            f"Third most common: {third_most_common_language[0]}, detected in {third_most_common_language[1]} segments. [language detection]\n"
+            f"Language of the first segment: {language_of_segment[0]} (old default) [language detection]\n"
+            f"Total Inference time: {time.time() - start_time:.2f}s. [language detection]\n"
+        )
         
         # Return the most common language detected
         return most_common_language
