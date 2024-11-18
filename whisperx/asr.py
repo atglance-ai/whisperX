@@ -263,7 +263,7 @@ class FasterWhisperPipeline(Pipeline):
         return {"segments": segments, "language": language}
 
 
-   def detect_language(self, audio: np.ndarray):
+    def detect_language(self, audio: np.ndarray):
         start_time = time.time()
         if audio.shape[0] < N_SAMPLES:
             print("Warning: audio is shorter than 30s, language detection may be inaccurate. [language detection]")
