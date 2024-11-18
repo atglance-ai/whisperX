@@ -141,6 +141,9 @@ class FasterWhisperPipeline(Pipeline):
         else:
             self.device = device
 
+        # Language detection
+        self.default_language = 'sv'
+
         super(Pipeline, self).__init__()
         self.vad_model = vad
         self._vad_params = vad_params
@@ -263,15 +266,17 @@ class FasterWhisperPipeline(Pipeline):
     def detect_language(self, audio: np.ndarray):
         start_time = time.time()
         if audio.shape[0] < N_SAMPLES:
-            print("Warning: audio is shorter than 30s, language detection may be inaccurate.")
+            print("Warning: audio is shorter than 30s, language detection may be inaccurate. [language detection]")
+        
         language_of_segment = []
+
         total_segments = audio.shape[0] // N_SAMPLES
         # Determine the number of segments to check based on the given criteria
         if total_segments < 10:
             num_segments = total_segments
         else:
-            # Use either the first 30 segments or the first third of the segments, whichever is smaller
-            num_segments = min(30, max(10, total_segments // 3))
+            # Use either the first 50 segments or the first third of the segments, whichever is smaller
+            num_segments = min(50, max(10, total_segments // 3))
         
         model_n_mels = self.model.feat_kwargs.get("feature_size")
 
@@ -283,26 +288,36 @@ class FasterWhisperPipeline(Pipeline):
             results = self.model.model.detect_language(encoder_output)
             language_token, language_probability = results[0][0]
             language = language_token[2:-2]
-            language_of_segment.append(language)
+            language_of_segment.append((language, language_probability))
+
+        if not language_of_segment:
+            print(f"Warning: No language was detected from the audio {num_segments} segments. Returning default language 'en'. [language detection]")
+            return self.default_language
         
         # Determine the most common language across all checked segments
-        most_common_language = max(set(language_of_segment), key=language_of_segment.count)
-        num_detected = language_of_segment.count(most_common_language)
+        language_counts = {}
+        for language, _ in language_of_segment:
+            if language in language_counts:
+                language_counts[language] += 1
+            else:
+                language_counts[language] = 1
+        
+        sorted_languages = sorted(language_counts.items(), key=lambda item: item[1], reverse=True)
+        most_common_language = sorted_languages[0][0]
+        num_detected = sorted_languages[0][1]
         
         # Determine the second and third most common languages if available
-        language_counts = {lang: language_of_segment.count(lang) for lang in set(language_of_segment)}
-        sorted_languages = sorted(language_counts.items(), key=lambda item: item[1], reverse=True)
-        
         second_most_common_language = sorted_languages[1] if len(sorted_languages) > 1 else (None, 0)
         third_most_common_language = sorted_languages[2] if len(sorted_languages) > 2 else (None, 0)
         
         # Print the results of the language detection process
         print(
             f"Using most common language: {most_common_language}, detected in {num_detected}/{num_segments} segments of audio. [language detection]\n"
-            f"Second most common: {second_most_common_language[0]}, detected in {second_most_common_language[1]} segments. [language detection]\n"
-            f"Third most common: {third_most_common_language[0]}, detected in {third_most_common_language[1]} segments. [language detection]\n"
-            f"Language of the first segment: {language_of_segment[0]} (old default) [language detection]\n"
+            f"Second most common: {second_most_common_language[0]}, detected in {second_most_common_language[1]}/{num_segments} segments. [language detection]\n"
+            f"Third most common: {third_most_common_language[0]}, detected in {third_most_common_language[1]}/{num_segments} segments. [language detection]\n"
+            f"Language of the first segment: {language_of_segment[0][0]} (old default) [language detection]\n"
             f"Total Inference time: {time.time() - start_time:.2f}s. [language detection]\n"
+            f"Detected languages and probabilities per segment: {language_of_segment} [language detection]"
         )
         
         # Return the most common language detected
