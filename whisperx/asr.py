@@ -270,8 +270,8 @@ class FasterWhisperPipeline(Pipeline):
         if total_segments < 10:
             num_segments = total_segments
         else:
-            # Use either the first 30 segments or the first third of the segments, whichever is smaller
-            num_segments = min(30, max(10, total_segments // 3))
+            # Use either the first 50 segments or the first third of the segments, whichever is smaller
+            num_segments = min(50, max(10, total_segments // 3))
         
         model_n_mels = self.model.feat_kwargs.get("feature_size")
 
