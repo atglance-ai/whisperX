@@ -241,6 +241,7 @@ class FasterWhisperPipeline(Pipeline):
                 percent_complete = base_progress / 2 if combined_progress else base_progress
                 print(f"Progress: {percent_complete:.2f}%...")
                 torch.cuda.synchronize()
+                print(f"CUDA current stream: {torch.cuda.current_stream().query()}")
                 output = subprocess.check_output("nvidia-smi", shell=True, text=True)
                 output_str = output.replace("\n", " ")
                 print(f"GPU Memory Usage from nvidia-smi: {output_str}")
@@ -251,6 +252,8 @@ class FasterWhisperPipeline(Pipeline):
                 memory_sumary = torch.cuda.memory_summary(device=torch.device('cuda'))
                 memory_sumary_str = memory_sumary.replace("\n", " ")
                 print(f"PyTorch Memory Summary: {memory_sumary_str}")
+                print("EMPTYING CACHE")
+                torch.cuda.empty_cache()
             text = out['text']
             avg_logprob = out['avg_logprob']
             if batch_size in [0, 1, None]:
