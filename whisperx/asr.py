@@ -239,7 +239,7 @@ class FasterWhisperPipeline(Pipeline):
             if print_progress:
                 base_progress = ((idx + 1) / total_segments) * 100
                 percent_complete = base_progress / 2 if combined_progress else base_progress
-                print(f"Progress: {percent_complete:.2f}%...")
+                print(f"Progress: {percent_complete:.2f}%... {idx + 1}/{total_segments} segments processed.")
                 torch.cuda.synchronize()
                 print(f"CUDA current stream: {torch.cuda.current_stream().query()}")
                 output = subprocess.check_output("nvidia-smi", shell=True, text=True)
@@ -297,11 +297,15 @@ class FasterWhisperPipeline(Pipeline):
         model_n_mels = self.model.feat_kwargs.get("feature_size")
 
         for i in range(num_segments):
+            print(f"DEBUG: Processing segment {i + 1}/{num_segments}... [language detection]")
             segment = log_mel_spectrogram(audio[i * N_SAMPLES: (i + 1) * N_SAMPLES],
                                           n_mels=model_n_mels if model_n_mels is not None else 80,
                                           padding=0 if audio.shape[0] >= N_SAMPLES else N_SAMPLES - audio.shape[0])
+            print(f"DEBUG: post log mel spectrogram [language detection]")
             encoder_output = self.model.encode(segment)
+            print(f"DEBUG: post encode [language detection]")
             results = self.model.model.detect_language(encoder_output)
+            print(f"DEBUG: post detect language [language detection]")
             language_token, language_probability = results[0][0]
             language = language_token[2:-2]
             language_of_segment.append((language, language_probability))
