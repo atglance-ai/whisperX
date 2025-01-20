@@ -143,7 +143,7 @@ class FasterWhisperPipeline(Pipeline):
 
         # Language detection
         self.default_language = 'sv'
-        self.language_probability_threshold = 0.9
+        self.language_probability_threshold = 0.95
 
         super(Pipeline, self).__init__()
         self.vad_model = vad
@@ -265,6 +265,7 @@ class FasterWhisperPipeline(Pipeline):
 
 
     def detect_language(self, audio: np.ndarray):
+        # TODO: Do language detection for VAD-segments instead
         start_time = time.time()
         if audio.shape[0] < N_SAMPLES:
             print("Warning: audio is shorter than 30s, language detection may be inaccurate. [language detection]")
@@ -291,9 +292,18 @@ class FasterWhisperPipeline(Pipeline):
             language = language_token[2:-2]
             language_of_segment.append((language, language_probability))
 
-        if not language_of_segment or all(prob < self.language_probability_threshold for lang, prob in language_of_segment):
-            print(f"Warning: No language was detected from the audio {num_segments} segments. Returning default language {self.default_language}. [language detection]")
+        if not language_of_segment:
+            print(
+                f"Warning: No language detected from the audio {num_segments} segments. [language detection]"
+                f"Returning default language {self.default_language}. {language_of_segment} [language detection]"
+            )
             return self.default_language
+        elif all(prob < self.language_probability_threshold for lang, prob in language_of_segment):
+            print(
+                f"Warning: No language detected above threshold for {num_segments} segments. [language detection] "
+                f"Returning language of first segment {self.default_language}. {language_of_segment} [language detection]"
+            )
+            return language_of_segment[0][0]
         
         # Determine the most common language across all checked segments
         language_counts = {}
@@ -311,14 +321,11 @@ class FasterWhisperPipeline(Pipeline):
         
         # Determine the second and third most common languages if available
         second_most_common_language = sorted_languages[1] if len(sorted_languages) > 1 else (None, 0)
-        third_most_common_language = sorted_languages[2] if len(sorted_languages) > 2 else (None, 0)
         
         # Print the results of the language detection process
         print(
             f"Using most common language: {most_common_language}, detected in {num_detected}/{num_segments} segments of audio. [language detection]\n"
             f"Second most common: {second_most_common_language[0]}, detected in {second_most_common_language[1]}/{num_segments} segments. [language detection]\n"
-            f"Third most common: {third_most_common_language[0]}, detected in {third_most_common_language[1]}/{num_segments} segments. [language detection]\n"
-            f"Language of the first segment: {language_of_segment[0][0]} (old default) [language detection]\n"
             f"Total Inference time: {time.time() - start_time:.2f}s. [language detection]\n"
             f"Detected languages and probabilities per segment: {language_of_segment} [language detection]"
         )
