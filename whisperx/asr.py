@@ -301,7 +301,7 @@ class FasterWhisperPipeline(Pipeline):
         elif all(prob < self.language_probability_threshold for lang, prob in language_of_segment):
             print(
                 f"Warning: No language detected above threshold for {num_segments} segments. [language detection] "
-                f"Returning language of first segment {self.default_language}. {language_of_segment} [language detection]"
+                f"Returning language of first segment {language_of_segment[0][0]}. {language_of_segment} [language detection]"
             )
             return language_of_segment[0][0]
         
