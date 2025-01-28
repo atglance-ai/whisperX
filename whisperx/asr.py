@@ -144,6 +144,7 @@ class FasterWhisperPipeline(Pipeline):
         # Language detection
         self.default_language = 'sv'
         self.language_probability_threshold = 0.95
+        self.language_of_segment = None
 
         super(Pipeline, self).__init__()
         self.vad_model = vad
@@ -329,6 +330,7 @@ class FasterWhisperPipeline(Pipeline):
             f"Total Inference time: {time.time() - start_time:.2f}s. [language detection]\n"
             f"Detected languages and probabilities per segment: {language_of_segment} [language detection]"
         )
+        self.language_of_segment = language_of_segment
         
         # Return the most common language detected
         return most_common_language
