@@ -1,4 +1,9 @@
 whisperx.egg-info/
 **/__pycache__/
 .ipynb_checkpoints
+*.ipynb
 build
+
+data/*
+*.mp4
+venv/
