@@ -9,6 +9,8 @@ import numpy as np
 import torch
 from transformers import Pipeline
 from transformers.pipelines.pt_utils import PipelineIterator
+import copy
+from collections import Counter, defaultdict
 
 from .audio import N_SAMPLES, SAMPLE_RATE, load_audio, log_mel_spectrogram
 from .vad import load_vad_model, merge_chunks
@@ -155,6 +157,17 @@ class FasterWhisperPipeline(Pipeline):
         if "tokenizer" in kwargs:
             preprocess_kwargs["maybe_arg"] = kwargs["maybe_arg"]
         return preprocess_kwargs, {}, {}
+    #     preprocess_kwargs = {}
+    #     forward_kwargs    = {}
+    #     postprocess_kwargs = {}
+
+    #     # forward the language‑specific tokenizer / options to the model call
+    #     if "tokenizer" in kwargs:
+    #         forward_kwargs["tokenizer"] = kwargs["tokenizer"]
+    #     if "options" in kwargs:
+    #         forward_kwargs["options"] = kwargs["options"]
+
+    #     return preprocess_kwargs, forward_kwargs, postprocess_kwargs
 
     def preprocess(self, audio):
         audio = audio['inputs']
@@ -263,10 +276,180 @@ class FasterWhisperPipeline(Pipeline):
             self.options = self.options._replace(suppress_tokens=previous_suppress_tokens)
 
         return {"segments": segments, "language": language}
+    
+    def transcribe_multilang(
+        self,
+        audio: Union[str, np.ndarray],
+        *,
+        batch_size: int | None = None,
+        num_workers: int = 0,
+        chunk_size: int = 30,
+        print_progress: bool = False,
+        combined_progress: bool = False,
+        # ---- tuning knobs ------------------------------------------------------
+        lang_prob_threshold: float = 0.95,
+        min_seg_for_lang: float = 10.0,
+        max_language_groups: int = 5,
+        fallback_language: str | None = None,
+        verbose: bool = False,
+    ):
+        """
+        Multilingual transcription with per‑language batching.
+        Returns dict{"segments", "language", "languages"}  (no 'text').
+        """
+        # ------------------------------ I/O & VAD --------------------------------
+        if isinstance(audio, str):
+            audio = load_audio(audio)
+
+        vad_segments = self.vad_model({
+            "waveform": torch.from_numpy(audio).unsqueeze(0),
+            "sample_rate": SAMPLE_RATE
+        })
+        vad_segments = merge_chunks(vad_segments,
+                                    chunk_size,
+                                    onset=self._vad_params["vad_onset"],
+                                    offset=self._vad_params["vad_offset"])
+
+        if not vad_segments:
+            return {"segments": [], "language": None, "languages": []}
+
+        # ---------------------- language detection / tagging ---------------------
+        confident: list[dict] = []
+        uncertain: list[dict] = []
+        if verbose:
+            print(f"Detecting language for {len(vad_segments)} segments...")
+
+        for seg in vad_segments:
+            seg_len = seg['end'] - seg['start']
+            seg["length"] = seg_len
+
+            # skip detection for short segments – automatically uncertain
+            if seg_len < min_seg_for_lang:
+                seg["language_prob"] = 0.0
+                seg["language"] = None
+                uncertain.append(seg)
+                continue
+
+            lang, prob = self.detect_segment_language(audio,
+                                                    seg['start'],
+                                                    seg['end'],
+                                                    SAMPLE_RATE,
+                                                    return_all=False)
+
+            seg["language"] = lang
+            seg["language_prob"] = prob
+
+            if prob >= lang_prob_threshold:
+                confident.append(seg)
+            else:
+                uncertain.append(seg)
+
+        # ------------------- if nothing confident → fallback ---------------------
+        if not confident:
+            if verbose:
+                print("No confident language segments; using plain transcribe().")
+            res = self.transcribe(audio,
+                                batch_size=batch_size,
+                                num_workers=num_workers,
+                                chunk_size=chunk_size,
+                                print_progress=print_progress,
+                                combined_progress=combined_progress,
+                                language=fallback_language)
+            res["languages"] = [res["language"]]
+            return res
+
+        # -------------------- select top‑N language groups -----------------------
+        lang_counts = Counter(s["language"] for s in confident)
+        lang_pools = [l for l, _ in lang_counts.most_common(max_language_groups)]
+        majority_lang = lang_pools[0]
+        if verbose:
+            counts_per_lang = {lang: lang_counts[lang] for lang in lang_pools}
+            print(f"Language pools: {counts_per_lang}")
+
+        # -------------- build pools, map rare langs to majority ------------------
+        segments_by_lang: dict[str, list] = defaultdict(list)
+
+        for seg in confident:
+            key = seg["language"] if seg["language"] in lang_pools else majority_lang
+            segments_by_lang[key].append(seg)
+
+        # duplicate every uncertain segment into *all* pools
+        for seg in uncertain:
+            for l in lang_pools:
+                segments_by_lang[l].append(copy.deepcopy(seg))
+
+        # --------------------- per‑language transcription loop -------------------
+        base_tokenizer = self.tokenizer
+        base_options = self.options
+        results_by_start: dict[float, tuple] = {}  # start_time → (segment, logp)
+
+        for lang, segs in segments_by_lang.items():
+            if verbose:
+                print(f"Transcribing {lang}...")
+            tokenizer = faster_whisper.tokenizer.Tokenizer(
+                self.model.hf_tokenizer,
+                self.model.model.is_multilingual,
+                task="transcribe",
+                language=lang,
+            )
+            opts = copy.deepcopy(base_options)
+            if self.suppress_numerals:
+                opts = opts._replace(
+                    suppress_tokens=list(set(opts.suppress_tokens +
+                                            find_numeral_symbol_tokens(tokenizer)))
+                )
+
+            self.tokenizer = tokenizer
+            self.options   = opts
+
+            def seg_iter():
+                for s in segs:
+                    f1 = int(s['start'] * SAMPLE_RATE)
+                    f2 = int(s['end'] * SAMPLE_RATE)
+                    yield {'inputs': audio[f1:f2]}
+
+            bs = batch_size or self._batch_size
+            total = len(segs)
+
+            for idx, out in enumerate(self.__call__(seg_iter(),
+                                                    batch_size=bs,
+                                                    num_workers=num_workers)):
+                if print_progress:
+                    base_p = ((idx + 1) / total) * 100
+                    pct = base_p / 2 if combined_progress else base_p
+                    print(f"[{lang}] {pct:.2f}%")
+
+                text        = out['text'][0] if bs in [0, 1, None] else out['text']
+                avg_logprob = out['avg_logprob'][0] if bs in [0, 1, None] else out['avg_logprob']
+
+                seg = segs[idx]             # iterator order ≡ seg list order
+                seg_out = {
+                    "text": text,
+                    "start": round(seg['start'], 3),
+                    "end":   round(seg['end'], 3),
+                    "avg_logprob": avg_logprob,
+                    "language": lang
+                }
+
+                key = seg_out["start"]
+                if key not in results_by_start or avg_logprob > results_by_start[key][1]:
+                    results_by_start[key] = (seg_out, avg_logprob)
+
+            self.tokenizer = base_tokenizer
+            self.options   = base_options
+
+        # ----------------------------- final merge -------------------------------
+        final_segments = [v[0] for v in sorted(results_by_start.values(),
+                                            key=lambda x: x[0]["start"])]
+
+        return {
+            "segments":  final_segments,
+            "language":  majority_lang,
+            "languages": sorted(set(lang_pools)),
+        }
 
 
     def detect_language(self, audio: np.ndarray):
-        # TODO: Do language detection for VAD-segments instead
         start_time = time.time()
         if audio.shape[0] < N_SAMPLES:
             print("Warning: audio is shorter than 30s, language detection may be inaccurate. [language detection]")
@@ -336,6 +519,65 @@ class FasterWhisperPipeline(Pipeline):
         
         # Return the most common language detected
         return most_common_language
+    
+    def detect_segment_language(
+        self,
+        audio: np.ndarray,
+        start_time: float,
+        end_time: float,
+        sample_rate: int,
+        return_all: bool = False,
+    ):
+        """
+        Detect the language spoken between `start_time` and `end_time` (in seconds).
+
+        Parameters
+        ----------
+        audio : np.ndarray
+            1-D PCM float32 array (full file).
+        start_time, end_time : float
+            Segment boundaries in seconds.
+        sample_rate : int
+            Sample-rate of `audio`.
+        return_all : bool, optional
+            • False  → return (best_lang, best_prob)  
+            • True   → return list[(lang, prob), …] sorted by `prob` desc.
+
+        Returns
+        -------
+        best_lang : str
+            ISO-639-1 language code (e.g. "en", "sv").
+        best_prob : float
+            Probability of `best_lang`.  
+            **OR**, if `return_all=True`, a full ranked list.
+        """
+        # ---- 1. slice & pad / truncate to 30s window ----
+        start_idx = int(start_time * sample_rate)
+        end_idx   = int(end_time   * sample_rate)
+        segment   = audio[start_idx:end_idx]
+
+        if segment.size == 0:
+            raise ValueError("Empty segment passed to detect_segment_language")
+
+        # if segment.shape[0] < N_SAMPLES:
+        #     # pad to 30 s so mel extractor sees the expected number of frames
+        #     segment = np.pad(segment, (0, N_SAMPLES - segment.shape[0]))
+
+        # ---- 2. log‑mel & encoder ----
+        n_mels = self.model.feat_kwargs.get("feature_size") or 80
+        mel    = log_mel_spectrogram(segment, n_mels=n_mels, padding=0)
+        enc    = self.model.encode(mel)
+
+        # ---- 3. language probs ----
+        lang_scores = self.model.model.detect_language(enc)[0]  # list[(token, prob)]
+        # convert tokens like "<|en|>" → "en"
+        lang_scores = [(tok[2:-2], prob) for tok, prob in lang_scores]
+
+        if return_all:
+            return lang_scores      # already sorted by prob desc
+        else:
+            best_lang, best_prob = lang_scores[0]
+            return best_lang, best_prob
 
 
 def load_model(whisper_arch,
@@ -363,7 +605,6 @@ def load_model(whisper_arch,
     Returns:
         A Whisper pipeline.
     '''
-
     if whisper_arch.endswith(".en"):
         language = "en"
 
