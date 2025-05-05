@@ -157,17 +157,6 @@ class FasterWhisperPipeline(Pipeline):
         if "tokenizer" in kwargs:
             preprocess_kwargs["maybe_arg"] = kwargs["maybe_arg"]
         return preprocess_kwargs, {}, {}
-    #     preprocess_kwargs = {}
-    #     forward_kwargs    = {}
-    #     postprocess_kwargs = {}
-
-    #     # forward the language‑specific tokenizer / options to the model call
-    #     if "tokenizer" in kwargs:
-    #         forward_kwargs["tokenizer"] = kwargs["tokenizer"]
-    #     if "options" in kwargs:
-    #         forward_kwargs["options"] = kwargs["options"]
-
-    #     return preprocess_kwargs, forward_kwargs, postprocess_kwargs
 
     def preprocess(self, audio):
         audio = audio['inputs']
@@ -476,8 +465,7 @@ class FasterWhisperPipeline(Pipeline):
             language = language_token[2:-2]
             language_of_segment.append((language, language_probability))
         
-        self.language_of_segment = language_of_segment
-
+        
         if not language_of_segment:
             print(
                 f"Warning: No language detected from the audio {num_segments} segments. [language detection]"
@@ -490,6 +478,8 @@ class FasterWhisperPipeline(Pipeline):
                 f"Returning language of first segment {language_of_segment[0][0]}. {language_of_segment} [language detection]"
             )
             return language_of_segment[0][0]
+        
+        self.language_of_segment = language_of_segment
         
         # Determine the most common language across all checked segments
         language_counts = {}
