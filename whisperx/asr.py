@@ -465,7 +465,6 @@ class FasterWhisperPipeline(Pipeline):
             language = language_token[2:-2]
             language_of_segment.append((language, language_probability))
         
-        
         if not language_of_segment:
             print(
                 f"Warning: No language detected from the audio {num_segments} segments. [language detection]"
