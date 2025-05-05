@@ -464,6 +464,8 @@ class FasterWhisperPipeline(Pipeline):
             language_token, language_probability = results[0][0]
             language = language_token[2:-2]
             language_of_segment.append((language, language_probability))
+
+        self.language_of_segment = language_of_segment
         
         if not language_of_segment:
             print(
@@ -478,7 +480,7 @@ class FasterWhisperPipeline(Pipeline):
             )
             return language_of_segment[0][0]
         
-        self.language_of_segment = language_of_segment
+        
         
         # Determine the most common language across all checked segments
         language_counts = {}
