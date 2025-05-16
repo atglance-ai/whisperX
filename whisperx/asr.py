@@ -269,6 +269,7 @@ class FasterWhisperPipeline(Pipeline):
     def transcribe_multilang(
         self,
         audio: Union[str, np.ndarray],
+        fallback_language: str,
         *,
         batch_size: int | None = None,
         num_workers: int = 0,
@@ -276,10 +277,10 @@ class FasterWhisperPipeline(Pipeline):
         print_progress: bool = False,
         combined_progress: bool = False,
         # ---- tuning knobs ------------------------------------------------------
-        lang_prob_threshold: float = 0.95,
+        lang_prob_threshold: float = 0.96,
         min_seg_for_lang: float = 10.0,
         max_language_groups: int = 5,
-        fallback_language: str | None = None,
+        allowed_languages: list[str] = ['sv', 'no', 'en', 'de', 'fi', 'da', 'es', 'fr', 'it', 'nl'],
         verbose: bool = False,
     ):
         """
@@ -305,9 +306,11 @@ class FasterWhisperPipeline(Pipeline):
         # ---------------------- language detection / tagging ---------------------
         confident: list[dict] = []
         uncertain: list[dict] = []
+        t_start = time.time()
         if verbose:
             print(f"Detecting language for {len(vad_segments)} segments...")
 
+        original_segment_lang_prob_length = []
         for seg in vad_segments:
             seg_len = seg['end'] - seg['start']
             seg["length"] = seg_len
@@ -324,6 +327,17 @@ class FasterWhisperPipeline(Pipeline):
                                                     seg['end'],
                                                     SAMPLE_RATE,
                                                     return_all=False)
+            
+            original_segment_lang_prob_length.append({
+                "lang": lang,
+                "prob": prob,
+                "len": seg_len
+            })
+            
+            if lang not in allowed_languages:
+                if verbose:
+                    print(f"Language {lang} not in allowed languages, using fallback language {fallback_language}, probability: {prob: .3f}, segment length: {seg_len: .2f}s")
+                lang = fallback_language
 
             seg["language"] = lang
             seg["language_prob"] = prob
@@ -353,7 +367,13 @@ class FasterWhisperPipeline(Pipeline):
         majority_lang = lang_pools[0]
         if verbose:
             counts_per_lang = {lang: lang_counts[lang] for lang in lang_pools}
-            print(f"Language pools: {counts_per_lang}")
+            print(
+                f"Language detection for {len(vad_segments)} segments took {time.time() - t_start:.2f}s. "
+                f"Language pools: {counts_per_lang} "
+                f"Num confident segments: {len(confident)} "
+                f"Num uncertain segments: {len(uncertain)} "
+                f"Segment language, probability, length: {original_segment_lang_prob_length}"
+            )
 
         # -------------- build pools, map rare langs to majority ------------------
         segments_by_lang: dict[str, list] = defaultdict(list)
@@ -417,7 +437,8 @@ class FasterWhisperPipeline(Pipeline):
                     "start": round(seg['start'], 3),
                     "end":   round(seg['end'], 3),
                     "avg_logprob": avg_logprob,
-                    "language": lang
+                    "language": lang,
+                    "language_probability": seg['language_prob']
                 }
 
                 key = seg_out["start"]
@@ -434,7 +455,7 @@ class FasterWhisperPipeline(Pipeline):
         return {
             "segments":  final_segments,
             "language":  majority_lang,
-            "languages": sorted(set(lang_pools)),
+            "counts_per_language": counts_per_lang,
         }
 
 
