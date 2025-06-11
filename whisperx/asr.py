@@ -193,7 +193,7 @@ class FasterWhisperPipeline(Pipeline):
         return final_iterator
 
     def transcribe(
-        self, audio: Union[str, np.ndarray], batch_size=None, num_workers=0, language=None, task=None, chunk_size=30, print_progress = False, combined_progress=False
+        self, audio: Union[str, np.ndarray], batch_size=None, num_workers=0, language=None, task="transcribe", chunk_size=30, print_progress = False, combined_progress=False
     ) -> TranscriptionResult:
         if isinstance(audio, str):
             audio = load_audio(audio)
@@ -301,6 +301,7 @@ class FasterWhisperPipeline(Pipeline):
                                     offset=self._vad_params["vad_offset"])
 
         if not vad_segments:
+            print("No segments detected, returning empty result.")
             return {"segments": [], "language": None, "languages": []}
 
         # ---------------------- language detection / tagging ---------------------
@@ -357,13 +358,15 @@ class FasterWhisperPipeline(Pipeline):
                                 chunk_size=chunk_size,
                                 print_progress=print_progress,
                                 combined_progress=combined_progress,
-                                language=fallback_language)
+                                language=fallback_language,
+                                task="transcribe")
             res["languages"] = [res["language"]]
             return res
 
         # -------------------- select top‑N language groups -----------------------
         lang_counts = Counter(s["language"] for s in confident)
         lang_pools = [l for l, _ in lang_counts.most_common(max_language_groups)]
+            
         majority_lang = lang_pools[0]
         if verbose:
             counts_per_lang = {lang: lang_counts[lang] for lang in lang_pools}
