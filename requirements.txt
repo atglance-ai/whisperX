@@ -1,7 +1,7 @@
 torch==2.3.0
 torchvision==0.18.0
 torchaudio==2.3.0
-faster-whisper==1.0.0
+faster-whisper==1.0.2
 transformers==4.39.3
 pandas==2.2.2
 setuptools==72.1.0
